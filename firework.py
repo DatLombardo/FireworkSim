@@ -13,7 +13,7 @@ WHITE = (255, 255, 255)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
-win_width = 1200
+win_width = 1400
 win_height = 700
 fwRadius = 5
 
@@ -21,28 +21,64 @@ fwRadius = 5
 # on all machines, regardless of the actual machine speed.
 clock = pygame.time.Clock()
 
-def sim_to_screen(win_height, x, y):
+def to_screen(x, y):
     '''flipping y, since we want our y to increase as we move up'''
     x += 10
     y += 10
 
     return x, win_height - y
 
-def randomVel():
-    #X-Velocity set to 3 for firework to have normality.
-    xVel = random.uniform(3, 20)
-    sign1 = random.randint(0,1)
-    yVel = random.uniform(3, 20)
-    sign2 = random.randint(0, 1)
-    if (sign1 == 1):
-        xVel = -xVel
-    if (sign2 == 1):
-        yVel = -yVel
-    return [xVel, yVel]
-
-
 def normalize(v):
     return v / np.linalg.norm(v)
+
+def randomVel():
+    #X-Velocity set to 3 for firework to have normality.
+    vel = random.uniform(90, 110)
+    return vel
+
+def sparkCount():
+    return random.randint(14,24)
+
+def getVelocityList(count):
+    half1 = count // 2
+    half2 = count - half1
+    velList = []
+    dist1 = float(1.0 / (half1 + 1))
+    dist2 = float(1.0 / (half2 + 1))
+
+    temp = dist1
+    tempHalf = half1//2
+    #
+    quad4 = []
+    for i in range(half1):
+        vel = random.uniform(20, 25)
+        if (i < tempHalf):
+            quad4.append(((temp)*vel))
+        else:
+            quad4.append(((-temp)*vel))
+        temp += dist1
+    quad2 = list(reversed(quad4))
+
+    for i in range(half1):
+        velList.append([quad4[i], quad2[i]])
+
+
+    temp = dist2
+    tempHalf = half2//2
+    quad1 = []
+    for i in range(half2):
+        vel = random.uniform(20, 25)
+        quad1.append(((temp)*vel))
+        temp += dist2
+    quad3 = list(reversed(quad1))
+
+    for i in range(half2):
+        if (i < tempHalf):
+            velList.append([quad1[i], quad3[i]])
+        else:
+            velList.append([-quad1[i], -quad3[i]])
+    return velList
+
 
 class Firework(pygame.sprite.Sprite):
     def __init__(self, colour, radius):
@@ -65,7 +101,7 @@ class FireworkStand(pygame.sprite.Sprite):
         self.image = pygame.Surface([width, height])
         self.rect = self.image.get_rect()
         self.image.fill(colour)
-        pygame.draw.rect(self.image, colour, (600, 0, width, height), 0)
+        pygame.draw.rect(self.image, colour, (700, 0, width, height), 0)
 
     def update(self):
         pass
@@ -74,7 +110,7 @@ class FireworkStand(pygame.sprite.Sprite):
 class Simulation:
     def __init__(self):
         #Firework is by default centered
-        self.pos = [450,0]
+        self.pos = [700,10]
         self.velocity = [0,0]
         self.angle = 90
         self.fuse = 10.0
@@ -104,12 +140,13 @@ class Simulation:
     def setup(self):
         #Lauching with a positive X-Value
         if (self.direction):
-            self.velocity[0] =  math.cos(math.radians(self.angle))*100
+            self.velocity[0] =  math.cos(math.radians(self.angle))*randomVel()
         #Launching with a negative X-Value
         else:
-            self.velocity[0] =  -math.cos(math.radians(self.angle))*100
+            self.velocity[0] =  -math.cos(math.radians(self.angle))*randomVel()
 
-        self.velocity[1] = math.sin(math.radians(self.angle))*100
+        self.velocity[1] = math.sin(math.radians(self.angle))*randomVel()
+
         self.solver.set_initial_value([self.pos[0], self.pos[1], self.velocity[0], self.velocity[1]], self.cur_time)
 
         self.trace_x = [self.pos[0]]
@@ -166,6 +203,16 @@ class Simulation:
                 self.angle += 5
         print (self.direction ,self.angle)
 
+    def drawAngleAim(self):
+        #Add 5 to center the line to the middle of the stand
+        if (self.direction):
+            x = self.pos[0] + 200*math.cos(math.radians(self.angle)) + 5
+            y = self.pos[1] + 200*math.sin(math.radians(self.angle))
+        else:
+            x = self.pos[0] - 200*math.cos(math.radians(self.angle)) + 5
+            y = self.pos[1] + 200*math.sin(math.radians(self.angle))
+        return [self.pos[0] + 5, self.pos[1], x, y]
+
 
     def pause(self):
         self.paused = True
@@ -200,7 +247,7 @@ class ExplosionObj(pygame.sprite.Sprite):
         self.state = [0, 0, 0, 0]
         self.t = 0
         self.g = -9.8
-        self.mass = 0.1
+        self.mass = 0.5
         self.radius = radius
 
         self.solver = ode(self.f)
@@ -210,16 +257,9 @@ class ExplosionObj(pygame.sprite.Sprite):
     def f(self, t, state):
         dx = state[2]
         dy = state[3]
-        if (state[2] > 0):
-            dvx = -state[2]/50
-        else:
-            dvx = state[2]/50
-        if (state[3] > 0):
-            dvy = -state[3]/50 + (self.g * self.mass)
-        else:
-            dvy = state[3]/50 + (self.g * self.mass)
+        dvy = (self.g * self.mass)
 
-        return [dx, dy, dvx, dvy]
+        return [dx, dy, 0, dvy]
 
     def set_pos(self, pos):
         self.state[0:2] = pos
@@ -244,30 +284,31 @@ class ExplosionObj(pygame.sprite.Sprite):
 class Explosion:
     def __init__(self):
         #Change name to sparks
-        self.disks = []
+        self.sparks = []
         self.spark_group = pygame.sprite.Group()
         self.e = 1. # Coefficient of restitution
         self.dt = 0.05
         self.burn_time = 5
 
     def set_sparks(self, radius, count, pos, colour):
+        velList = getVelocityList(count)
         for i in range(count):
             disk = ExplosionObj(3, colour)
             disk.set_pos(pos)
-            disk.set_vel(randomVel())
-            self.disks.append(disk)
+            disk.set_vel(velList[i])
+            self.sparks.append(disk)
             self.spark_group.add(disk)
 
     def update(self):
         if (self.burn_time < 4.5):
-            self.check_disk_collision()
+            self.check_spark_coll()
         self.burn_time -= self.dt
-        for d in self.disks:
+        for d in self.sparks:
             d.update(self.dt)
 
         #self.spark_group.update()
     def draw(self, screen):
-        for d in self.disks:
+        for d in self.sparks:
             d.draw(screen)
 
     def check_burnout(self):
@@ -278,64 +319,51 @@ class Explosion:
     def compute_collision_response(self, i, j):
         pass
 
-    def check_disk_collision(self):
-        for i in range(0, len(self.disks)):
+    def check_spark_coll(self):
+        for i in range(0, len(self.sparks)):
             #Do Single Disk to Wall Collision here
-            for j in range(i+1, len(self.disks)):
+            for j in range(i + 1, len(self.sparks)):
                 if i == j:
                     continue
-                #print 'Checking disks', i, 'and', j
-                pos_i = np.array(self.disks[i].state[0:2])
-                pos_j = np.array(self.disks[j].state[0:2])
-                dist_ij = np.sqrt(np.sum((pos_i - pos_j)**2))
+                #print 'Checking sparks', i, 'and', j
+                iPos = np.array(self.sparks[i].state[0:2])
+                jPos = np.array(self.sparks[j].state[0:2])
+                dist = np.sqrt(np.sum((iPos - jPos)**2))
 
-                #print pos_i, pos_j, dist_ij
+                iRad = self.sparks[i].radius
+                jRad = self.sparks[j].radius
 
-                radius_i = self.disks[i].radius
-                radius_j = self.disks[j].radius
-                if dist_ij > radius_i + radius_j:
+                if dist > iRad + jRad:
                     continue
 
-                # May be a collision
-                vel_i = np.array(self.disks[i].state[2:])
-                vel_j = np.array(self.disks[j].state[2:])
-                relative_vel_ij = vel_i - vel_j
-                n_ij = normalize(pos_i - pos_j)
+                iVel = np.array(self.sparks[i].state[2:])
+                jVel = np.array(self.sparks[j].state[2:])
+                relativeVel = iVel - jVel
+                norm = normalize(iPos - jPos)
 
-                #print relative_vel_ij, n_ij
-
-                if np.dot(relative_vel_ij, n_ij) >= 0:
+                if np.dot(relativeVel, norm) >= 0:
                     continue
 
-                mass_i = self.disks[i].mass
-                mass_j = self.disks[j].mass
+                iMass = self.sparks[i].mass
+                jMass = self.sparks[j].mass
 
                 # Don't confuse this J with j
-                J = -(1+self.e) * np.dot(relative_vel_ij, n_ij) / ((1./mass_i) + (1./mass_j))
+                J = -( 1 + self.e) * np.dot(relativeVel, norm) / ((1.0 / iMass) + (1.0 / jMass))
 
-                vel_i_aftercollision = vel_i + n_ij * J / mass_i
-                vel_j_aftercollision = vel_j - n_ij * J / mass_j
+                iFinalVel = iVel + norm * J / iMass
+                jFinalVel = jVel - norm * J / jMass
 
-                #print 'Response'
-                #print vel_i_aftercollision.shape, vel_j_aftercollision.shape
+                self.sparks[i].set_vel(iFinalVel)
+                self.sparks[j].set_vel(jFinalVel)
 
-                self.disks[i].set_vel(vel_i_aftercollision)
-                self.disks[j].set_vel(vel_j_aftercollision)
-                break # Only handle a single collision per instance
+                break
 
-
-def sim_to_screen(win_height, x, y):
-    '''flipping y, since we want our y to increase as we move up'''
-    x += 10
-    y += 10
-
-    return x, win_height - y
 
 def main():
 
     # initializing pygame
     pygame.init()
-    clock.tick(5)
+    clock.tick(60)
 
     screen = pygame.display.set_mode((win_width, win_height))
     pygame.display.set_caption('Firework Simulation')
@@ -364,8 +392,7 @@ def main():
     posComplete = False
 
     while not posComplete:
-        stand.rect.x, stand.rect.y = sim_to_screen(win_height, sim.pos[0], sim.pos[1])
-        #fw.rect.x, fw.rect.y = sim_to_screen(win_height, sim.pos[0], sim.pos[1])
+        stand.rect.x, stand.rect.y = to_screen(sim.pos[0], sim.pos[1])
 
         event = pygame.event.poll()
         if event.type == pygame.QUIT:
@@ -397,6 +424,8 @@ def main():
         screen.fill(BLACK)
         stand_group.update()
         stand_group.draw(screen)
+        fwAimPos = sim.drawAngleAim()
+        pygame.draw.line(screen, (0, 0, 255), to_screen(fwAimPos[0], fwAimPos[1]), to_screen(fwAimPos[2], fwAimPos[3]))
         pygame.display.flip()
 
 
@@ -417,8 +446,8 @@ def main():
 
         # update sprite x, y position using values
         # returned from the simulation
-        fw.rect.x, fw.rect.y = sim_to_screen(win_height, launch.pos[0], launch.pos[1])
-        stand.rect.x, stand.rect.y = sim_to_screen(win_height, sim.pos[0], sim.pos[1])
+        fw.rect.x, fw.rect.y = to_screen(launch.pos[0], launch.pos[1])
+        stand.rect.x, stand.rect.y = to_screen(sim.pos[0], sim.pos[1])
 
         event = pygame.event.poll()
         if event.type == pygame.QUIT:
