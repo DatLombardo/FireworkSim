@@ -38,15 +38,16 @@ def normalize(v):
     return v / np.linalg.norm(v)
 
 def randomVel():
-    #X-Velocity set to 3 for firework to have normality.
-    vel = random.uniform(90, 110)
-    return vel
+    return random.uniform(90, 110)
+
+def randomFwDelay():
+    return random.uniform(0, 5)
 
 def sparkCount():
     return random.randint(14,24)
 
 def getFWColour():
-    print("-- Availiable Colours --")
+    print("\n-- Availiable Colours --")
     for i in range(len(colourList)):
         print(str(i + 1) + ": - " + colourList[i])
     notDone = True
@@ -134,20 +135,21 @@ class Simulation:
         self.velocity = [0,0]
         self.angle = 90
         self.fuse = fuse
+        self.delay = randomFwDelay()
         #True = right
         #False = left
         self.direction = True
         self.cur_time = 0.0
+        self.tol_distance = 5
         self.g = -9.8
-        self.c = 0.0001
+        self.c = 0.01
         self.dt = 0.05
-        self.t = 0
         self.m = 1
         self.paused = True
 
         self.solver = ode(self.f)
         self.solver.set_integrator('dop853')
-        self.solver.set_f_params(self.c,self.g)
+        self.solver.set_f_params(self.c, self.g)
 
     def f(self, t, state, friction, gravity):
         dx = state[2]
@@ -169,25 +171,64 @@ class Simulation:
 
         self.solver.set_initial_value([self.pos[0], self.pos[1], self.velocity[0], self.velocity[1]], self.cur_time)
 
-        self.trace_x = [self.pos[0]]
-        self.trace_y = [self.pos[1]]
+    #Electronic Guidance system, doesn't allow firework to fire below 200 pixels,
+    #Sets firework fuse to 0
+    def is_collision(self, state):
+        if (state[1] <= 255 and state[3] < 0):
+            return True
+        return False
 
+    def respond_to_collision(self, state, t):
+        #Binary Search goes here
+        dt = self.dt
+        initialState = state
+        initT = t
+        dtFract = self.dt
+        done = False
+        while not done:
+            if((state[1] <= (self.tol_distance + 250)) and (state[1] >= 250 )):
+                done = True
+                break #within dTolerance
+            elif(state[1] > (self.tol_distance + 250 )): #Above
+                dtFract = dtFract * 2
+                dt = dt + dtFract
+            else: #below
+                dtFract = dtFract / 2
+                dt = dt - dtFract
+            self.solver.set_initial_value(initialState, initT)
+            newState = self.solver.integrate(dt + initT)
+            state = newState
+        return [state, (dt + initT)]
 
     def step(self):
-        self.cur_time += self.dt
 
         if self.solver.successful():
-            self.solver.integrate(self.cur_time)
-            self.pos = self.solver.y[0:2]
-            self.velocity = self.solver.y[2:4]
+            #Check to see if it's worth checking the Collision
+            new_state = self.solver.integrate(self.cur_time + self.dt)
 
-            self.trace_x.append(self.pos[0])
-            self.trace_y.append(self.pos[1])
+            # Collision detection
+            if not self.is_collision(new_state):
+                self.pos = new_state[0:2]
+                self.velocity = new_state[2:4]
+                self.cur_time += self.dt
+            else:
+                state_after_collision, collision_time = self.respond_to_collision(new_state, self.cur_time + self.dt)
+                self.pos = state_after_collision[0:2]
+                self.velocity = state_after_collision[2:4]
+                self.cur_time = self.fuse + self.dt
+                self.solver.set_initial_value([self.pos[0], self.pos[1], self.velocity[0], self.velocity[1]], self.cur_time)
+
+
 
     def check_explosion(self):
         if (self.fuse < self.cur_time):
+            s = pygame.mixer.Sound('explosionSound.ogg')
+            ch = s.play()
             return True
         return False
+
+    def getPaused(self):
+        return self.paused
 
     def shift_left(self, win_width):
         #Stop shifting off-screen, given 5 pixels of border grace
@@ -209,7 +250,7 @@ class Simulation:
                 self.angle -= 5
             else:
                 self.angle += 5
-        print (self.direction ,self.angle)
+        #print (self.direction ,self.angle)
 
     def angle_right(self):
         if (self.direction):
@@ -221,7 +262,7 @@ class Simulation:
                 self.angle -= 5
             else:
                 self.angle += 5
-        print (self.direction ,self.angle)
+        #print (self.direction ,self.angle)
 
     def drawAngleAim(self):
         #Add 5 to center the line to the middle of the stand
@@ -458,7 +499,7 @@ def main():
     print 'Press (q) to direct firework on a left angle'
     print 'Press (e) to direct firework on a right angle'
     print 'Press (space) to confirm location of firework'
-    print '--------------------------------'
+    print '--------------------------------\n'
 
     for i in range(fwCount):
         #Get Initial Firework Information
@@ -562,12 +603,12 @@ def main():
             fwG = currObj.getFwG()
             standG = currObj.getStandG()
             expl = currObj.getExpl()
+            colour = currObj.getColour()
             launch.resume()
 
             fuseComp = currObj.getFuseComp()
 
             if not (fuseComp):
-
                 fw.rect.x, fw.rect.y = to_screen(launch.pos[0], launch.pos[1])
                 stand.rect.x, stand.rect.y = to_screen(sim.pos[0], sim.pos[1])
 
@@ -582,8 +623,6 @@ def main():
                     launch.pause()
                     explPos = launch.get_final_pos()
                     expl.set_sparks(fwRadius, sparkCount(), explPos, colour)
-                    #Add explosion to group
-                    #Kill FW from other group
 
             explComp = currObj.getExplComp()
 
