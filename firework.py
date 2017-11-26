@@ -13,6 +13,12 @@ WHITE = (255, 255, 255)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
+ORANGE = (255, 165, 0)
+YELLOW = (255,255,0)
+PURPLE = (128,0,128)
+PINK = (255,192,203)
+colourList = ["RED", "GREEN", "BLUE", "ORANGE", "YELLOW", "PURPLE", "PINK"]
+colours = [RED, GREEN, BLUE, ORANGE, YELLOW, PURPLE, PINK]
 win_width = 1400
 win_height = 700
 fwRadius = 5
@@ -38,6 +44,20 @@ def randomVel():
 
 def sparkCount():
     return random.randint(14,24)
+
+def getFWColour():
+    print("-- Availiable Colours --")
+    for i in range(len(colourList)):
+        print(str(i + 1) + ": - " + colourList[i])
+    notDone = True
+    while notDone:
+        colour = int(raw_input("Please Select Firework Colour: ")) - 1
+        if (colour < len(colourList)):
+            notDone = False
+        else:
+            print("Invalid Input. Try again (1 - " + str(len(colourList)) + ")")
+    return colours[colour]
+
 
 def getVelocityList(count):
     half1 = count // 2
@@ -108,12 +128,12 @@ class FireworkStand(pygame.sprite.Sprite):
 
 
 class Simulation:
-    def __init__(self):
+    def __init__(self, fuse):
         #Firework is by default centered
         self.pos = [700,10]
         self.velocity = [0,0]
         self.angle = 90
-        self.fuse = 10.0
+        self.fuse = fuse
         #True = right
         #False = left
         self.direction = True
@@ -207,10 +227,9 @@ class Simulation:
         #Add 5 to center the line to the middle of the stand
         if (self.direction):
             x = self.pos[0] + 200*math.cos(math.radians(self.angle)) + 5
-            y = self.pos[1] + 200*math.sin(math.radians(self.angle))
         else:
             x = self.pos[0] - 200*math.cos(math.radians(self.angle)) + 5
-            y = self.pos[1] + 200*math.sin(math.radians(self.angle))
+        y = self.pos[1] + 200*math.sin(math.radians(self.angle))
         return [self.pos[0] + 5, self.pos[1], x, y]
 
 
@@ -288,7 +307,7 @@ class Explosion:
         self.spark_group = pygame.sprite.Group()
         self.e = 1. # Coefficient of restitution
         self.dt = 0.05
-        self.burn_time = 5
+        self.burn_time = 6
 
     def set_sparks(self, radius, count, pos, colour):
         velList = getVelocityList(count)
@@ -300,7 +319,7 @@ class Explosion:
             self.spark_group.add(disk)
 
     def update(self):
-        if (self.burn_time < 4.5):
+        if (self.burn_time < 5.75):
             self.check_spark_coll()
         self.burn_time -= self.dt
         for d in self.sparks:
@@ -359,26 +378,78 @@ class Explosion:
                 break
 
 
+class Container:
+    def __init__(self, fw, fwG, stand, standG, sim, launch, expl, colour):
+        self.fw = fw
+        self.fw_group = fwG
+        self.stand = stand
+        self.stand_group = standG
+        self.sim = sim
+        self.launch = launch
+        self.expl = expl
+        self.colour = colour
+        self.fuseComplete = False
+        self.explComplete = False
+
+    def getFw(self):
+        return self.fw
+
+    def getFwG(self):
+        return self.fw_group
+
+    def getStand(self):
+        return self.stand
+
+    def getStandG(self):
+        return self.stand_group
+
+    def getSim(self):
+        return self.sim
+
+    def getLaunch(self):
+        return self.launch
+
+    def getExpl(self):
+        return self.expl
+
+    def getColour(self):
+        return self.colour
+
+    def getFuseComp(self):
+        return self.fuseComplete
+
+    def setFuseComp(self, val):
+        self.fuseComplete = val
+
+    def setExplComp(self, val):
+        self.explComplete = val
+
+    def setFwRect(self, x, y):
+        self.fw.rect.x = x
+        self.fw.rect.y = y
+
+    def setStandRect(self, x, y):
+        self.stand.rect.x = x
+        self.stand.rect.y = y
+
+    def getExplComp(self):
+        return self.explComplete
+
+
 def main():
 
     # initializing pygame
-    pygame.init()
     clock.tick(60)
-
+    pygame.init()
     screen = pygame.display.set_mode((win_width, win_height))
+    screen.fill(BLACK)
     pygame.display.set_caption('Firework Simulation')
 
-    # setting up a sprite group, which will be drawn on the
-    # screen
-    fw = Firework(RED, fwRadius)
-    stand = FireworkStand(GREY, 12, 80)
-    fw_group = pygame.sprite.GroupSingle(fw)
-    stand_group = pygame.sprite.GroupSingle(stand)
+    fwObjects = {}
+    fwSprites = pygame.sprite.Group()
+    standSprites = pygame.sprite.Group()
 
-    # setting up simulation
-    sim = Simulation()
-
-    posComplete = False
+    fwCount = int(raw_input("Number of Fireworks: "))
 
     print '--------------------------------'
     print 'Usage:'
@@ -389,56 +460,156 @@ def main():
     print 'Press (space) to confirm location of firework'
     print '--------------------------------'
 
-    posComplete = False
+    for i in range(fwCount):
+        #Get Initial Firework Information
+        colour = getFWColour()
+        fuseTime = float(raw_input("Fuse Time: "))
 
-    while not posComplete:
-        stand.rect.x, stand.rect.y = to_screen(sim.pos[0], sim.pos[1])
+        #Define Firework and Stand instances
+        fw = Firework(colour, fwRadius)
+        stand = FireworkStand(GREY, 12, 80)
+        fw_group = pygame.sprite.GroupSingle(fw)
+        stand_group = pygame.sprite.GroupSingle(stand)
+        fwSprites.add(fw)
+        standSprites.add(stand)
+
+        # setting up simulation
+        sim = Simulation(fuseTime)
+
+        posComplete = False
+
+        while not posComplete:
+            stand.rect.x, stand.rect.y = to_screen(sim.pos[0], sim.pos[1])
+
+            event = pygame.event.poll()
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_a:
+                sim.shift_left(win_width)
+                continue
+
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_d:
+                sim.shift_right(win_width)
+                continue
+
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                sim.angle_left()
+                continue
+
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+                sim.angle_right()
+                continue
+
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                posComplete = True
+                continue
+            else:
+                pass
+
+            screen.fill(BLACK)
+            stand_group.update()
+            stand_group.draw(screen)
+            fwAimPos = sim.drawAngleAim()
+            pygame.draw.line(screen, (0, 0, 255), to_screen(fwAimPos[0], fwAimPos[1]), to_screen(fwAimPos[2], fwAimPos[3]))
+            #Display previously set stands
+            if fwObjects:
+                for obj in fwObjects:
+                    currObj = fwObjects[obj]
+                    currObj.getStandG().draw(screen)
+                    currObj.getStandG().update()
+
+            pygame.display.flip()
+
+        sim.pause()
+        finalStandPos = sim.get_pos()
+        finalAngle = sim.get_angle()
+
+        launch = Simulation(fuseTime)
+        expl = Explosion()
+        launch.launch_setup(finalStandPos, finalAngle)
+        launch.setup()
+        #def __init__(self, fw, fwG, stand, standG, sim, launch, expl):
+        container = Container(fw, fw_group, stand, stand_group, sim, launch, expl, colour)
+        fwObjects[i] = container
+
+    '''
+    What I need to do is merge the launch and explosion loops together
+    and make a conidtional at the beginning of the loop to see if the current
+    object is in the launch or explosion step then execute.
+    '''
+
+    print("Firework show will begin in 5 seconds...")
+    time.sleep(5)
+    complete  = False
+    explDone = 0
+    while not complete:
+        #Check for screen close
 
         event = pygame.event.poll()
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit(0)
 
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_a:
-            sim.shift_left(win_width)
-            continue
+        for obj in fwObjects:
+            currObj = fwObjects[obj]
+            fw = currObj.getFw()
+            sim = currObj.getSim()
+            stand = currObj.getStand()
+            expl = currObj.getExpl()
+            launch = currObj.getLaunch()
+            fwG = currObj.getFwG()
+            standG = currObj.getStandG()
+            expl = currObj.getExpl()
+            launch.resume()
 
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_d:
-            sim.shift_right(win_width)
-            continue
+            fuseComp = currObj.getFuseComp()
 
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
-            sim.angle_left()
-            continue
+            if not (fuseComp):
 
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_e:
-            sim.angle_right()
-            continue
+                fw.rect.x, fw.rect.y = to_screen(launch.pos[0], launch.pos[1])
+                stand.rect.x, stand.rect.y = to_screen(sim.pos[0], sim.pos[1])
 
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-            posComplete = True
-            continue
-        else:
-            pass
+                launch.step()
 
-        screen.fill(BLACK)
-        stand_group.update()
-        stand_group.draw(screen)
-        fwAimPos = sim.drawAngleAim()
-        pygame.draw.line(screen, (0, 0, 255), to_screen(fwAimPos[0], fwAimPos[1]), to_screen(fwAimPos[2], fwAimPos[3]))
+                fuseComplete = launch.check_explosion()
+
+                if (fuseComplete):
+                    currObj.setFuseComp(True)
+                    #complete = True
+                    fw.kill()
+                    launch.pause()
+                    explPos = launch.get_final_pos()
+                    expl.set_sparks(fwRadius, sparkCount(), explPos, colour)
+                    #Add explosion to group
+                    #Kill FW from other group
+
+            explComp = currObj.getExplComp()
+
+            if ( not (explComp) and fuseComp):
+                expl.update()
+                expl.draw(screen)
+                burnout = expl.check_burnout()
+                if (burnout):
+                    explDone += 1
+                    currObj.setExplComp(True)
+
+        fwSprites.update()
+        fwSprites.draw(screen)
+        standSprites.update()
+        standSprites.draw(screen)
         pygame.display.flip()
 
+        if (explDone == fwCount):
+            complete = True
 
-    finalStandPos = sim.get_pos()
-    finalAngle = sim.get_angle()
-    #Need to loop until launch button is pressed, check for left and right arrow
-    #events and update the sim_class: ie the firework location
+    time.sleep(2)
 
-    sim.pause()
 
-    launch = Simulation()
-    launch.launch_setup(finalStandPos, finalAngle)
-    launch.setup()
+
+
+'''
 
     fuseComplete = False
     launch.resume()
@@ -498,18 +669,7 @@ def main():
         pygame.display.flip()
 
         burnout = expl.check_burnout()
-
-
-    time.sleep(2)
-    '''
-    plt.figure(1)
-    plt.plot(launch.trace_x, launch.trace_y)
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.axis('equal')
-    plt.title('2D projectile trajectory')
-    plt.show()
-    '''
+'''
 
 
 if __name__ == '__main__':
