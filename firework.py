@@ -38,13 +38,13 @@ def normalize(v):
     return v / np.linalg.norm(v)
 
 def randomVel():
-    return random.uniform(90, 110)
+    return random.uniform(100, 120)
 
 def randomFwDelay():
-    return random.uniform(0, 5)
+    return random.uniform(0, 15)
 
 def sparkCount():
-    return random.randint(14,24)
+    return random.randint(14,30)
 
 def getFWColour():
     print("\n-- Availiable Colours --")
@@ -71,14 +71,20 @@ def getVelocityList(count):
     tempHalf = half1//2
     #
     quad4 = []
+    quad2 = []
     for i in range(half1):
-        vel = random.uniform(20, 25)
+        vel = random.uniform(20, 30)
+        newTemp = random.uniform(temp, temp+dist1)
+        vel2 = random.uniform(20, 30)
+        newTemp2 = random.uniform(temp, temp+dist1)
         if (i < tempHalf):
-            quad4.append(((temp)*vel))
+            quad4.append(((newTemp)*vel))
+            quad2.append(((newTemp2)*vel2))
         else:
-            quad4.append(((-temp)*vel))
+            quad4.append(((-newTemp)*vel))
+            quad2.append(((-newTemp2)*vel2))
         temp += dist1
-    quad2 = list(reversed(quad4))
+    quad2 = list(reversed(quad2))
 
     for i in range(half1):
         velList.append([quad4[i], quad2[i]])
@@ -87,11 +93,16 @@ def getVelocityList(count):
     temp = dist2
     tempHalf = half2//2
     quad1 = []
+    quad3 = []
     for i in range(half2):
-        vel = random.uniform(20, 25)
-        quad1.append(((temp)*vel))
+        vel = random.uniform(20, 30)
+        newTemp = random.uniform(temp, temp+dist1)
+        quad1.append(((newTemp)*vel))
+        vel2 = random.uniform(20, 30)
+        newTemp2 = random.uniform(temp, temp+dist1)
+        quad3.append(((newTemp2)*vel2))
         temp += dist2
-    quad3 = list(reversed(quad1))
+    quad3 = list(reversed(quad3))
 
     for i in range(half2):
         if (i < tempHalf):
@@ -134,28 +145,29 @@ class Simulation:
         self.pos = [700,10]
         self.velocity = [0,0]
         self.angle = 90
-        self.fuse = fuse
         self.delay = randomFwDelay()
+        self.fuse = fuse + self.delay
         #True = right
         #False = left
         self.direction = True
         self.cur_time = 0.0
         self.tol_distance = 5
         self.g = -9.8
-        self.c = 0.01
+        self.friction = 0.01
         self.dt = 0.05
-        self.m = 1
+        self.mass = 1
         self.paused = True
 
         self.solver = ode(self.f)
         self.solver.set_integrator('dop853')
-        self.solver.set_f_params(self.c, self.g)
+        self.solver.set_f_params(self.friction, self.g)
 
     def f(self, t, state, friction, gravity):
         dx = state[2]
         dy = state[3]
+        #Air friction
         dvx = -state[2]*friction
-        dvy = gravity
+        dvy = gravity * self.mass
 
         return [dx, dy, dvx, dvy]
 
@@ -201,6 +213,8 @@ class Simulation:
         return [state, (dt + initT)]
 
     def step(self):
+        #Loss of fuel constant deduction
+        self.mass = self.mass - 0.0005
 
         if self.solver.successful():
             #Check to see if it's worth checking the Collision
@@ -226,6 +240,18 @@ class Simulation:
             ch = s.play()
             return True
         return False
+
+    def checkDelay(self):
+        if (self.cur_time > self.delay):
+            if (self.paused):
+                self.solver.set_initial_value([self.pos[0], self.pos[1], self.velocity[0], self.velocity[1]], self.cur_time)
+                self.resume()
+                sound = pygame.mixer.Sound('launchSound.ogg')
+                ch = sound.play()
+            return True
+        else:
+            self.cur_time += self.dt
+            return False
 
     def getPaused(self):
         return self.paused
@@ -308,18 +334,21 @@ class ExplosionObj(pygame.sprite.Sprite):
         self.t = 0
         self.g = -9.8
         self.mass = 0.5
+        self.friction = 0.01
         self.radius = radius
 
         self.solver = ode(self.f)
         self.solver.set_integrator('dop853')
+        self.solver.set_f_params(self.friction, self.g)
         self.solver.set_initial_value(self.state, self.t)
-
-    def f(self, t, state):
+    def f(self, t, state, friction, gravity):
         dx = state[2]
         dy = state[3]
-        dvy = (self.g * self.mass)
+        #Air Friction
+        dvx = -state[2]*self.friction
+        dvy = (gravity * self.mass)
 
-        return [dx, dy, 0, dvy]
+        return [dx, dy, dvx, dvy]
 
     def set_pos(self, pos):
         self.state[0:2] = pos
@@ -604,7 +633,7 @@ def main():
             standG = currObj.getStandG()
             expl = currObj.getExpl()
             colour = currObj.getColour()
-            launch.resume()
+            #launch.resume()
 
             fuseComp = currObj.getFuseComp()
 
@@ -612,7 +641,9 @@ def main():
                 fw.rect.x, fw.rect.y = to_screen(launch.pos[0], launch.pos[1])
                 stand.rect.x, stand.rect.y = to_screen(sim.pos[0], sim.pos[1])
 
-                launch.step()
+                delayComplete = sim.checkDelay()
+                if (delayComplete):
+                    launch.step()
 
                 fuseComplete = launch.check_explosion()
 
@@ -644,71 +675,6 @@ def main():
             complete = True
 
     time.sleep(2)
-
-
-
-
-'''
-
-    fuseComplete = False
-    launch.resume()
-    while not fuseComplete:
-
-        # update sprite x, y position using values
-        # returned from the simulation
-        fw.rect.x, fw.rect.y = to_screen(launch.pos[0], launch.pos[1])
-        stand.rect.x, stand.rect.y = to_screen(sim.pos[0], sim.pos[1])
-
-        event = pygame.event.poll()
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit(0)
-
-        # clear the background, and draw the sprites
-        screen.fill(BLACK)
-        fw_group.update()
-        fw_group.draw(screen)
-        stand_group.update()
-        stand_group.draw(screen)
-        pygame.display.flip()
-
-        #Where the simulation ends, determines height
-        #Changes to be made to this: add collision detection if the firework comes back down
-        if launch.pos[1] <= -1.:
-            pygame.quit()
-            break
-
-        # update simulation
-        if not launch.paused:
-            launch.step()
-        else:
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                launch.step()
-
-        fuseComplete = launch.check_explosion()
-    fw.kill()
-    launch.pause()
-    explPos = launch.get_final_pos()
-
-    expl = Explosion()
-    # radius, count, pos):
-    expl.set_sparks(fwRadius, 15, explPos, RED)
-
-    burnout = False
-
-    while not burnout:
-        event = pygame.event.poll()
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit(0)
-
-        #screen.fill(BLACK)
-        expl.update()
-        expl.draw(screen)
-        pygame.display.flip()
-
-        burnout = expl.check_burnout()
-'''
 
 
 if __name__ == '__main__':
